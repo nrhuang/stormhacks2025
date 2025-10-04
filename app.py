@@ -1,5 +1,6 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
+from flask_cors import CORS
 import base64
 import io
 import os
@@ -11,7 +12,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='build/static', template_folder='build')
+CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # Configure Gemini API
@@ -26,6 +28,15 @@ chat_history = []
 
 @app.route('/')
 def index():
+    return render_template('index.html')
+
+@app.route('/<path:path>')
+def serve_react_app(path):
+    """Serve the React app for any non-API routes"""
+    if path.startswith('api/'):
+        return jsonify({'error': 'API endpoint not found'}), 404
+    
+    # For all other routes, serve the React app
     return render_template('index.html')
 
 @app.route('/process_frame', methods=['POST'])

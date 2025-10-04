@@ -1,6 +1,6 @@
 # AI Repair Assistant
 
-A Flask-based web application that uses your computer's camera and Google's Gemini AI to identify objects and provide step-by-step repair instructions.
+A React + Flask web application that uses your computer's camera and Google's Gemini AI to identify objects and provide step-by-step repair instructions.
 
 ## Features
 
@@ -8,17 +8,23 @@ A Flask-based web application that uses your computer's camera and Google's Gemi
 - **AI Object Analysis**: Uses Gemini 2.0 Flash model to identify objects and their models
 - **Repair Instructions**: Provides detailed, step-by-step troubleshooting and repair guidance
 - **Interactive Chat**: Follow-up questions and additional help through a chat interface
-- **Modern UI**: Beautiful, responsive interface with real-time updates
+- **Modern UI**: Beautiful, responsive React interface with real-time updates
 
 ## Setup Instructions
 
-### 1. Install Dependencies
+### 1. Install Python Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Get Gemini API Key
+### 2. Install Node.js Dependencies
+
+```bash
+npm install
+```
+
+### 3. Get Gemini API Key
 
 1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. Create a new API key
@@ -39,13 +45,27 @@ set GEMINI_API_KEY=your-api-key-here
 export GEMINI_API_KEY="your-api-key-here"
 ```
 
-### 3. Run the Application
+### 4. Build and Run the Application
 
+**Development Mode:**
 ```bash
+# Terminal 1: Start React development server
+npm start
+
+# Terminal 2: Start Flask backend
 python app.py
 ```
 
-The application will be available at `http://localhost:5000`
+**Production Mode:**
+```bash
+# Build React app
+npm run build
+
+# Start Flask server (serves built React app)
+python app.py
+```
+
+The application will be available at `http://localhost:4848`
 
 ## Usage
 
@@ -65,6 +85,7 @@ The application will be available at `http://localhost:5000`
 ## Requirements
 
 - Python 3.7+
+- Node.js 14+
 - Modern web browser with camera support
 - Google Gemini API key
 - Internet connection
