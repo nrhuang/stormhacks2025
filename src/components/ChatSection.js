@@ -12,6 +12,12 @@ const ChatSection = () => {
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+
+  // NEW: voice recording state/refs
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const streamRef = useRef(null);
+
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const messagesEndRef = useRef(null);
 
@@ -25,7 +31,6 @@ const ChatSection = () => {
 
   useEffect(() => {
     const handleImageAnalyzed = (event) => {
-      // New flow: show a confirmation box first with identification and suggested queries
       const { identification, queries, timestamp } = event.detail;
       setMessages(prev => [...prev, {
         type: 'confirmation',
@@ -117,13 +122,11 @@ const ChatSection = () => {
   };
 
   const confirmAndSearch = async (msgIndex, searchType = 'repair') => {
-    // msgIndex is index in messages array of the confirmation message
     const msg = messages[msgIndex];
     if (!msg || msg.type !== 'confirmation') return;
     const queries = msg.queries || [];
     if (queries.length === 0) return;
 
-    // optimistically mark confirmation message as pending
     setMessages(prev => prev.map((m, i) => i === msgIndex ? { ...m, pending: true } : m));
 
     try {
@@ -134,24 +137,20 @@ const ChatSection = () => {
       });
       const result = await resp.json();
       if (result.success) {
-        // replace confirmation message with the identification (as system) and append search results
         setMessages(prev => prev.map((m, i) => i === msgIndex ? ({
           type: 'system',
           message: m.identification,
           timestamp: Date.now(),
         }) : m));
 
-        // If this was a buy request and an Amazon URL was returned, open it in a new tab
         if (searchType === 'buy' && result.amazon_search_url) {
           try {
             window.open(result.amazon_search_url, '_blank', 'noopener');
           } catch (e) {
-            // ignore popup blockers; the markdown will still contain the link
             console.warn('Could not open Amazon URL in new tab', e);
           }
         }
 
-        // Append the returned system message and include amazon_search_url/origin_query so buttons render
         setMessages(prev => [...prev, {
           type: 'system',
           message: result.response,
@@ -182,7 +181,6 @@ const ChatSection = () => {
       });
       const result = await resp.json();
       if (result.success) {
-        // include amazon_search_url/origin_query if present so user can check Amazon after repair tip
         setMessages(prev => [...prev, {
           type: 'system',
           message: result.response,
@@ -228,6 +226,93 @@ const ChatSection = () => {
     );
   };
 
+  // =========================
+  // NEW: Voice recording logic
+  // =========================
+  const startRecording = async () => {
+    try {
+      if (!navigator.mediaDevices || !window.MediaRecorder) {
+        setMessages(prev => [...prev, {
+          type: 'system',
+          message: 'Your browser does not support voice recording.',
+          timestamp: Date.now()
+        }]);
+        return;
+        }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = mr;
+
+      const chunks = [];
+      mr.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+
+      mr.onstop = async () => {
+        try {
+          const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+          const form = new FormData();
+          form.append('audio', blob, 'voice.webm');
+
+          const res = await fetch('/process_audio', {
+            method: 'POST',
+            body: form
+          });
+          const data = await res.json();
+
+          if (data && data.success) {
+            // show transcript as the user's message and assistant reply
+            setMessages(prev => [...prev,
+              { type: 'user', message: data.transcript, timestamp: Date.now() },
+              { type: 'system', message: data.response, timestamp: data.timestamp }
+            ]);
+          } else {
+            throw new Error((data && data.error) || 'Voice transcription failed.');
+          }
+        } catch (err) {
+          console.error('Voice upload error:', err);
+          setMessages(prev => [...prev, {
+            type: 'system',
+            message: 'Sorry, voice processing failed.',
+            timestamp: Date.now()
+          }]);
+        } finally {
+          // cleanup stream
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+          }
+        }
+      };
+
+      mr.start();
+      setIsRecording(true);
+    } catch (e) {
+      console.error('Microphone error:', e);
+      setMessages(prev => [...prev, {
+        type: 'system',
+        message: 'Microphone permission denied or unavailable.',
+        timestamp: Date.now()
+      }]);
+    }
+  };
+
+  const stopRecording = () => {
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+    } catch {}
+    setIsRecording(false);
+  };
+  // =========================
+
   return (
     <div className="chat-section">
       <h2 className="chat-header">AI Repair Assistant</h2>
@@ -268,7 +353,6 @@ const ChatSection = () => {
               className={`message ${msg.type} ${msg.imageProcessed ? 'image-processed' : ''}`}
             >
               {formatMessage(msg.message)}
-              {/* If server provided amazon_search_url or origin_query, show quick action buttons */}
               {(msg.amazon_search_url || msg.origin_query) && (
                 <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
                   {msg.amazon_search_url && (
@@ -294,6 +378,7 @@ const ChatSection = () => {
         ))}
         <div ref={messagesEndRef} />
       </div>
+
       <div className="chat-input-container">
         <input
           type="text"
@@ -304,10 +389,23 @@ const ChatSection = () => {
           placeholder="Ask a follow-up question..."
           disabled={!cameraEnabled}
         />
+
+        {/* NEW: Voice button */}
+        <button
+          onClick={isRecording ? stopRecording : startRecording}
+          className={`btn ${isRecording ? 'btn-danger' : 'btn-secondary'}`}
+          title={isRecording ? 'Stop & send' : 'Record voice'}
+          disabled={!cameraEnabled || isSending}
+          style={{ marginLeft: 8 }}
+        >
+          {isRecording ? 'Stop & Send' : '🎤 Voice'}
+        </button>
+
         <button
           onClick={sendMessage}
           className="btn btn-primary"
           disabled={!cameraEnabled || isSending || !inputMessage.trim()}
+          style={{ marginLeft: 8 }}
         >
           {isSending ? 'Sending...' : 'Send'}
         </button>
