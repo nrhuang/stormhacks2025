@@ -11,8 +11,95 @@
     />
     <title>AI Repair Assistant</title>
   </head>
+  <!-- ...existing code... -->
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+
+    <div id="controls" style="position:fixed;right:12px;top:12px;z-index:9999;background:#fff;padding:8px;border-radius:6px;">
+      <label style="margin-right:8px;">
+        <input type="checkbox" id="voiceToggle" /> Read responses aloud
+      </label>
+      <button id="enableVoiceBtn">Enable Voice</button>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
+    <script>
+      // ...existing code...
+      window.voiceUserEnabled = false;
+      window.availableVoices = [];
+
+      function ensureVoicesLoaded() {
+        return new Promise((resolve) => {
+          const voices = speechSynthesis.getVoices();
+          if (voices && voices.length) {
+            window.availableVoices = voices;
+            return resolve(voices);
+          }
+          // Some browsers fire onvoiceschanged
+          function onChange() {
+            const v = speechSynthesis.getVoices();
+            if (v && v.length) {
+              window.availableVoices = v;
+              speechSynthesis.removeEventListener('voiceschanged', onChange);
+              resolve(v);
+            }
+          }
+          speechSynthesis.addEventListener('voiceschanged', onChange);
+          // Try to trigger loading
+          speechSynthesis.getVoices();
+          // fallback timeout
+          setTimeout(() => resolve(speechSynthesis.getVoices() || []), 1000);
+        });
+      }
+
+      document.getElementById('enableVoiceBtn').addEventListener('click', async () => {
+        // user gesture — allow speech now
+        window.voiceUserEnabled = true;
+        document.getElementById('enableVoiceBtn').disabled = true;
+        document.getElementById('enableVoiceBtn').textContent = 'Voice Enabled';
+        await ensureVoicesLoaded();
+      });
+
+      function renderMarkdownToHtml(markdown) {
+        return DOMPurify.sanitize(marked.parse(markdown || ''));
+      }
+
+      // Expose speak function so React code can call window.speakTextFromMarkdown(...)
+      window.speakTextFromMarkdown = async function(markdown) {
+        try {
+          if (!('speechSynthesis' in window)) return;
+          const enabled = document.getElementById('voiceToggle')?.checked;
+          if (!enabled) return;
+          if (!window.voiceUserEnabled) return; // require explicit enable click
+
+          const voices = await ensureVoicesLoaded();
+          const html = renderMarkdownToHtml(markdown || '');
+          const tmp = document.createElement('div');
+          tmp.innerHTML = html;
+          const plain = tmp.textContent || tmp.innerText || '';
+          if (!plain.trim()) return;
+
+          const utter = new SpeechSynthesisUtterance(plain);
+          utter.rate = 1.0;
+          utter.pitch = 1.0;
+          utter.lang = 'en-US';
+
+          // prefer english voice
+          const pref = (voices || window.availableVoices || []).find(v => v.lang && v.lang.startsWith('en')) || (voices && voices[0]);
+          if (pref) utter.voice = pref;
+
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(utter);
+        } catch (err) {
+          console.warn('speech error', err);
+        }
+      };
+
+      // warm up voices on load (not sufficient without user gesture)
+      window.addEventListener('load', () => { speechSynthesis.getVoices(); });
+    </script>
   </body>
+<!-- ...existing code... -->
 </html>

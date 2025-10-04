@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './ChatSection.css';
 
-const ChatSection = () => {
+const ChatSection = ({ onAiResponse }) => {
   const [messages, setMessages] = useState([
     {
       type: 'system',
@@ -32,6 +32,8 @@ const ChatSection = () => {
         timestamp,
         imageProcessed: true
       }]);
+      // notify parent to speak the response
+      if (onAiResponse) onAiResponse(message);
     };
 
     const handleCameraStatus = (event) => {
@@ -45,7 +47,7 @@ const ChatSection = () => {
       window.removeEventListener('imageAnalyzed', handleImageAnalyzed);
       window.removeEventListener('cameraStatus', handleCameraStatus);
     };
-  }, []);
+  }, [onAiResponse]);
 
   useEffect(() => {
     loadChatHistory();
@@ -98,6 +100,8 @@ const ChatSection = () => {
           message: result.response,
           timestamp: result.timestamp
         }]);
+        // notify parent to speak the response
+        if (onAiResponse) onAiResponse(result.response);
       } else {
         throw new Error(result.error || 'Chat failed');
       }
