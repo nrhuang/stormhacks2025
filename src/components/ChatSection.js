@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
 import './ChatSection.css';
 
 const ChatSection = () => {
@@ -119,12 +120,7 @@ const ChatSection = () => {
   };
 
   const formatMessage = (text) => {
-    return text.split('\n').map((line, index) => (
-      <React.Fragment key={index}>
-        {line}
-        {index < text.split('\n').length - 1 && <br />}
-      </React.Fragment>
-    ));
+    return <ReactMarkdown>{text}</ReactMarkdown>;
   };
 
   return (
