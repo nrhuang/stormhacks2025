@@ -34,6 +34,38 @@ def add_chat_entry(entry):
     """Append an entry to in-memory chat history (no on-disk persistence)."""
     chat_history.append(entry)
 
+# Helper: include recent chat history in model prompts
+def format_recent_history_for_prompt(limit=12):
+    """Return a formatted string of the last `limit` chat entries to include as context for the model."""
+    try:
+        recent = chat_history[-limit:]
+        lines = []
+        for e in recent:
+            role = 'User' if e.get('type') == 'user' else 'Assistant'
+            # prefer message field, fall back to text-like fields
+            text = e.get('message') or e.get('response') or ''
+            # keep short
+            text_snippet = text if len(text) <= 1000 else text[:1000] + '...'
+            lines.append(f"{role}: {text_snippet}")
+        if lines:
+            return "Conversation history:\n" + "\n".join(lines) + "\n\n"
+    except Exception:
+        pass
+    return ''
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/<path:path>')
+def serve_react_app(path):
+    """Serve the React app for any non-API routes"""
+    if path.startswith('api/'):
+        return jsonify({'error': 'API endpoint not found'}), 404
+    
+    # For all other routes, serve the React app
+    return render_template('index.html')
+
 # Helper: perform a lightweight DuckDuckGo HTML search and extract top results
 def search_duckduckgo(query, max_results=5):
     try:
@@ -101,7 +133,9 @@ def process_frame():
             image = image.convert('RGB')
         
         # Create prompt for object identification and troubleshooting
-        prompt = """
+        # include recent chat history so model remembers past outputs
+        history_ctx = format_recent_history_for_prompt(limit=12)
+        prompt = history_ctx + """
         Analyze this image and identify the exact model and type of object shown. 
         If this appears to be a broken or malfunctioning device, provide:
         
@@ -125,7 +159,9 @@ def process_frame():
 
         # Ask the model for a few short search queries to find replacement parts or repair tools
         try:
-            queries_prompt = f"Based on the analysis above, provide 3 concise search queries (one per line) that would help find replacement parts, replacement items, or repair tools for the identified device. Use short, web-search-friendly phrases.\n\nPrevious analysis:\n{identification_text}\n"
+            # include recent history + identification so queries are grounded in previous outputs
+            queries_history = format_recent_history_for_prompt(limit=8)
+            queries_prompt = queries_history + f"Based on the analysis above, provide 3 concise search queries (one per line) that would help find replacement parts, replacement items, or repair tools for the identified device. Use short, web-search-friendly phrases.\n\nPrevious analysis:\n{identification_text}\n"
             queries_resp = model.generate_content(queries_prompt)
             queries_text = queries_resp.text or ''
             queries = [q.strip('-• \t') for q in queries_text.splitlines() if q.strip()]
@@ -180,7 +216,9 @@ def confirm_and_search():
         # If the user requested a repair plan, ask the model to generate step-by-step repair instructions
         if search_type == 'repair':
             try:
-                repair_prompt = f"""
+                # include recent history so model knows prior outputs when composing repair steps
+                repair_history = format_recent_history_for_prompt(limit=12)
+                repair_prompt = repair_history + f"""
                 You previously identified a device or part with the short search phrase: "{top_query}".
 
                 Provide a concise, practical repair plan targeted to a technically-minded end user. Include:
@@ -323,7 +361,9 @@ def chat():
         add_chat_entry(user_entry)
         
         # Create follow-up prompt
-        follow_up_prompt = f"""
+        # include recent chat history in the prompt so the model remembers earlier outputs
+        history_ctx = format_recent_history_for_prompt(limit=16)
+        follow_up_prompt = history_ctx + f"""
         The user is asking a follow-up question about the device we just analyzed: "{user_message}"
         
         Based on our previous analysis and this question, provide helpful guidance.
