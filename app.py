@@ -58,7 +58,8 @@ def process_frame():
         4. Step-by-step repair instructions if possible
         
         Be specific and helpful. If you can see any visible issues (cracks, damage, etc.), mention them.
-        Format your response as clear, numbered steps that a user can follow.
+        Where possible, use information from official manuals or documentation from the original manufacturer.
+        Be as concise as possible. Only respond with clear, numbered steps that a user can follow.
         """
         
         # Generate response using Gemini
