@@ -13,6 +13,8 @@ import requests
 import re
 from urllib.parse import urlparse, parse_qs, unquote, quote_plus
 import threading
+from werkzeug.utils import secure_filename
+
 
 load_dotenv()
 
@@ -47,6 +49,42 @@ def clear_chat():
     except Exception as e:
         app.logger.exception('clear_chat failed')
         return jsonify({'success': False, 'error': str(e)}), 500
+# Helper: include recent chat history in model prompts
+def format_recent_history_for_prompt(limit=12):
+    """Return a formatted string of the last `limit` chat entries to include as context for the model."""
+    try:
+        recent = chat_history[-limit:]
+        lines = []
+        for e in recent:
+            role = 'User' if e.get('type') == 'user' else 'Assistant'
+            # prefer message field, fall back to text-like fields
+            text = e.get('message') or e.get('response') or ''
+            # keep short
+            text_snippet = text if len(text) <= 1000 else text[:1000] + '...'
+            lines.append(f"{role}: {text_snippet}")
+        if lines:
+            return "Conversation history:\n" + "\n".join(lines) + "\n\n"
+    except Exception:
+        pass
+    return ''
+
+def _strip_data_url_prefix(b64_or_data_url: str) -> tuple[bytes, str]:
+    """
+    Returns (raw_bytes, mime_type). Accepts 'data:*;base64,...' or plain base64.
+    Tries to default to audio/webm if mime not present.
+    """
+    try:
+        if b64_or_data_url.startswith('data:'):
+            header, b64 = b64_or_data_url.split(',', 1)
+            # e.g. data:audio/webm;codecs=opus;base64,XXXX
+            mt = header.split(':', 1)[1].split(';', 1)[0]
+            return base64.b64decode(b64), mt
+        # plain base64
+        return base64.b64decode(b64_or_data_url), 'audio/webm'
+    except Exception:
+        # Not base64—assume we already got raw bytes
+        return b64_or_data_url if isinstance(b64_or_data_url, (bytes, bytearray)) else b'', 'application/octet-stream'
+
 
 @app.route('/')
 def index():
@@ -128,7 +166,9 @@ def process_frame():
             image = image.convert('RGB')
         
         # Create prompt for object identification and troubleshooting
-        prompt = """
+        # include recent chat history so model remembers past outputs
+        history_ctx = format_recent_history_for_prompt(limit=12)
+        prompt = history_ctx + """
         Analyze this image and identify the exact model and type of object shown. 
         If this appears to be a broken or malfunctioning device, provide:
         
@@ -152,7 +192,9 @@ def process_frame():
 
         # Ask the model for a few short search queries to find replacement parts or repair tools
         try:
-            queries_prompt = f"Based on the analysis above, provide 3 concise search queries (one per line) that would help find replacement parts, replacement items, or repair tools for the identified device. Use short, web-search-friendly phrases.\n\nPrevious analysis:\n{identification_text}\n"
+            # include recent history + identification so queries are grounded in previous outputs
+            queries_history = format_recent_history_for_prompt(limit=8)
+            queries_prompt = queries_history + f"Based on the analysis above, provide 3 concise search queries (one per line) that would help find replacement parts, replacement items, or repair tools for the identified device. Use short, web-search-friendly phrases.\n\nPrevious analysis:\n{identification_text}\n"
             queries_resp = model.generate_content(queries_prompt)
             queries_text = queries_resp.text or ''
             queries = [q.strip('-• \t') for q in queries_text.splitlines() if q.strip()]
@@ -186,6 +228,116 @@ def process_frame():
         print(f"Error processing frame: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/process_audio', methods=['POST'])
+def process_audio():
+    """
+    Accepts audio (webm/ogg/mp3/wav) via:
+      - JSON: { "audio": "data:audio/webm;base64,...." }  OR  { "audio": "<base64>" }
+      - multipart/form-data: file field named 'audio'
+    Transcribes with Gemini and returns both the transcript and a chat-style response.
+    """
+    try:
+        raw = None
+        mime = None
+
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            if 'audio' not in request.files:
+                return jsonify({'error': "No 'audio' file provided"}), 400
+            f = request.files['audio']
+            filename = secure_filename(f.filename or 'voice.webm')
+            raw = f.read()
+            # naive mime guess
+            ext = os.path.splitext(filename)[1].lower()
+            mime = {
+                '.webm': 'audio/webm',
+                '.ogg': 'audio/ogg',
+                '.mp3': 'audio/mpeg',
+                '.wav': 'audio/wav',
+                '.m4a': 'audio/mp4',
+                '.aac': 'audio/aac',
+            }.get(ext, f.mimetype or 'application/octet-stream')
+
+        else:
+            data = request.get_json(silent=True) or {}
+            audio_payload = data.get('audio')
+            if not audio_payload:
+                return jsonify({'error': "No 'audio' provided"}), 400
+            raw, mime = _strip_data_url_prefix(audio_payload)
+
+        if not raw or len(raw) == 0:
+            return jsonify({'error': 'Empty audio payload'}), 400
+
+        # --- 1) Transcribe with Gemini ---
+        # We ask explicitly for a transcript. Gemini handles webm/ogg/mp3/wav inline blobs.
+        history_ctx = format_recent_history_for_prompt(limit=8)
+        transcribe_prompt = history_ctx + "Transcribe the following audio verbatim. Only return the transcript text."
+
+        # The google-generativeai SDK accepts inline binary parts with mime_type.
+        # We pass [text_prompt, inline_audio].
+        try:
+            resp = model.generate_content([
+                transcribe_prompt,
+                {
+                    "inline_data": {
+                        "mime_type": mime,
+                        "data": raw
+                    }
+                }
+            ])
+            transcript = (resp.text or '').strip()
+        except Exception as e:
+            print(f"Gemini transcription error: {e}")
+            return jsonify({'error': 'Failed to transcribe audio'}), 500
+
+        if not transcript:
+            return jsonify({'error': 'No transcript produced'}), 500
+
+        # Save transcript as a user message in history
+        user_entry = {
+            'timestamp': time.time(),
+            'type': 'user',
+            'message': transcript,
+            'via': 'voice'
+        }
+        add_chat_entry(user_entry)
+
+        # --- 2) Generate a reply using your existing chat-style prompting ---
+        history_ctx = format_recent_history_for_prompt(limit=16)
+        follow_up_prompt = history_ctx + f"""
+        The user just spoke this message: "{transcript}"
+
+        Based on the ongoing conversation (likely about device identification/repair),
+        provide a concise, actionable response. If the user asks for troubleshooting,
+        give clear numbered steps. Keep it practical.
+        """
+        try:
+            reply = model.generate_content(follow_up_prompt)
+            reply_text = reply.text or ''
+        except Exception as e:
+            print(f"Gemini reply error: {e}")
+            reply_text = "I transcribed your message but couldn't generate a response right now."
+
+        system_entry = {
+            'timestamp': time.time(),
+            'type': 'system',
+            'message': reply_text,
+            'via': 'voice'
+        }
+        add_chat_entry(system_entry)
+
+        return jsonify({
+            'success': True,
+            'transcript': transcript,
+            'response': reply_text,
+            'timestamp': system_entry['timestamp'],
+            'mime_type': mime
+        })
+
+    except Exception as e:
+        print(f"Error in process_audio: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 
 # New endpoint: perform search only after user confirmation
 @app.route('/confirm_and_search', methods=['POST'])
@@ -207,7 +359,9 @@ def confirm_and_search():
         # If the user requested a repair plan, ask the model to generate step-by-step repair instructions
         if search_type == 'repair':
             try:
-                repair_prompt = f"""
+                # include recent history so model knows prior outputs when composing repair steps
+                repair_history = format_recent_history_for_prompt(limit=12)
+                repair_prompt = repair_history + f"""
                 You previously identified a device or part with the short search phrase: "{top_query}".
 
                 Provide a concise, practical repair plan targeted to a technically-minded end user. Include:
@@ -350,7 +504,9 @@ def chat():
         add_chat_entry(user_entry)
         
         # Create follow-up prompt
-        follow_up_prompt = f"""
+        # include recent chat history in the prompt so the model remembers earlier outputs
+        history_ctx = format_recent_history_for_prompt(limit=16)
+        follow_up_prompt = history_ctx + f"""
         The user is asking a follow-up question about the device we just analyzed: "{user_message}"
         
         Based on our previous analysis and this question, provide helpful guidance.

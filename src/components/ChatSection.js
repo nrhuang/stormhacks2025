@@ -12,6 +12,12 @@ const ChatSection = () => {
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+
+  // NEW: voice recording state/refs
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const streamRef = useRef(null);
+
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [showClearModal, setShowClearModal] = useState(false);
   const messagesEndRef = useRef(null);
@@ -183,7 +189,7 @@ const ChatSection = () => {
       });
       const result = await resp.json();
       if (result.success) {
-        // replace confirmation entry with identification-as-system
+        // replace confirmation message with the identification (as system) and append search results
         setMessages(prev => prev.map((m, i) => i === msgIndex ? ({
           type: 'system',
           message: m.identification || '',
@@ -273,6 +279,93 @@ const ChatSection = () => {
     );
   };
 
+  // =========================
+  // NEW: Voice recording logic
+  // =========================
+  const startRecording = async () => {
+    try {
+      if (!navigator.mediaDevices || !window.MediaRecorder) {
+        setMessages(prev => [...prev, {
+          type: 'system',
+          message: 'Your browser does not support voice recording.',
+          timestamp: Date.now()
+        }]);
+        return;
+        }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = mr;
+
+      const chunks = [];
+      mr.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+
+      mr.onstop = async () => {
+        try {
+          const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+          const form = new FormData();
+          form.append('audio', blob, 'voice.webm');
+
+          const res = await fetch('/process_audio', {
+            method: 'POST',
+            body: form
+          });
+          const data = await res.json();
+
+          if (data && data.success) {
+            // show transcript as the user's message and assistant reply
+            setMessages(prev => [...prev,
+              { type: 'user', message: data.transcript, timestamp: Date.now() },
+              { type: 'system', message: data.response, timestamp: data.timestamp }
+            ]);
+          } else {
+            throw new Error((data && data.error) || 'Voice transcription failed.');
+          }
+        } catch (err) {
+          console.error('Voice upload error:', err);
+          setMessages(prev => [...prev, {
+            type: 'system',
+            message: 'Sorry, voice processing failed.',
+            timestamp: Date.now()
+          }]);
+        } finally {
+          // cleanup stream
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+          }
+        }
+      };
+
+      mr.start();
+      setIsRecording(true);
+    } catch (e) {
+      console.error('Microphone error:', e);
+      setMessages(prev => [...prev, {
+        type: 'system',
+        message: 'Microphone permission denied or unavailable.',
+        timestamp: Date.now()
+      }]);
+    }
+  };
+
+  const stopRecording = () => {
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+    } catch {}
+    setIsRecording(false);
+  };
+  // =========================
+
   return (
     <div className="chat-section">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -355,10 +448,23 @@ const ChatSection = () => {
           placeholder="Ask a follow-up question..."
           disabled={!cameraEnabled}
         />
+
+        {/* NEW: Voice button */}
+        <button
+          onClick={isRecording ? stopRecording : startRecording}
+          className={`btn ${isRecording ? 'btn-danger' : 'btn-secondary'}`}
+          title={isRecording ? 'Stop & send' : 'Record voice'}
+          disabled={!cameraEnabled || isSending}
+          style={{ marginLeft: 8 }}
+        >
+          {isRecording ? 'Stop & Send' : '🎤 Voice'}
+        </button>
+
         <button
           onClick={sendMessage}
           className="btn btn-primary"
           disabled={!cameraEnabled || isSending || !inputMessage.trim()}
+          style={{ marginLeft: 8 }}
         >
           {isSending ? 'Sending...' : 'Send'}
         </button>
