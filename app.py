@@ -34,19 +34,6 @@ def add_chat_entry(entry):
     """Append an entry to in-memory chat history (no on-disk persistence)."""
     chat_history.append(entry)
 
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/<path:path>')
-def serve_react_app(path):
-    """Serve the React app for any non-API routes"""
-    if path.startswith('api/'):
-        return jsonify({'error': 'API endpoint not found'}), 404
-    
-    # For all other routes, serve the React app
-    return render_template('index.html')
-
 # Helper: perform a lightweight DuckDuckGo HTML search and extract top results
 def search_duckduckgo(query, max_results=5):
     try:
