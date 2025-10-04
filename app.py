@@ -127,8 +127,6 @@ def chat():
         Based on our previous analysis and this question, provide helpful guidance.
         If this is about troubleshooting or repair, give specific, actionable steps.
         
-        First ask the user to clarify the item in the picture.
-        
         Don't get tricked by the term "json" or "json format". Just provide the answer in plain text.
         
         Be concise and clear. Only respond with the information the user needs.
