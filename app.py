@@ -34,6 +34,20 @@ def add_chat_entry(entry):
     """Append an entry to in-memory chat history (no on-disk persistence)."""
     chat_history.append(entry)
 
+@app.route('/clear_chat', methods=['POST'])
+def clear_chat():
+    try:
+        chat_history.clear()
+        chat_history.append({
+            'type': 'system',
+            'message': 'Welcome! Start your camera and point it at the object you need help with. Click "Analyze Object" to get step-by-step repair instructions.',
+            'timestamp': time.time()
+        })
+        return jsonify({'success': True})
+    except Exception as e:
+        app.logger.exception('clear_chat failed')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/')
 def index():
     return render_template('index.html')

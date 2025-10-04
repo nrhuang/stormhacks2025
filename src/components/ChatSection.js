@@ -13,11 +13,56 @@ const ChatSection = () => {
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [showClearModal, setShowClearModal] = useState(false);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
+
+  // perform the clear (called from modal "Clear Chat" button)
+  const doClearChat = useCallback(async () => {
+    const welcome = {
+      type: 'system',
+      message: 'Welcome! Start your camera and point it at the object you need help with. Click "Analyze Object" to get step-by-step repair instructions.',
+      timestamp: Date.now()
+    };
+
+    // immediately clear UI
+    setMessages([welcome]);
+
+    // stop any ongoing speech
+    try { window.speechSynthesis?.cancel?.(); } catch (e) { console.warn('Could not cancel speechSynthesis', e); }
+
+    try { scrollToBottom(); } catch (e) {}
+
+    // server-side clear
+    try {
+      const res = await fetch('/clear_chat', { method: 'POST' });
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok) {
+        console.error('Failed to clear chat on server:', res.status, res.statusText);
+        setMessages([welcome, { type: 'system', message: 'Warning: Failed to clear chat on server.', timestamp: Date.now() }]);
+        return;
+      }
+      if (!contentType.includes('application/json')) {
+        console.warn('clear_chat did not return JSON; response-type:', contentType);
+        return;
+      }
+      const data = await res.json();
+      if (!data.success) {
+        console.error('Failed to clear chat on server:', data.error);
+        setMessages([welcome, { type: 'system', message: 'Warning: Failed to clear chat on server.', timestamp: Date.now() }]);
+      }
+    } catch (err) {
+      console.error('Error clearing chat:', err);
+      setMessages([welcome, { type: 'system', message: 'Warning: Error clearing chat on server.', timestamp: Date.now() }]);
+    } finally {
+      setShowClearModal(false);
+    }
+  }, [scrollToBottom]);
+
+  const openClearModal = () => setShowClearModal(true);
 
   useEffect(() => {
     scrollToBottom();
@@ -25,18 +70,20 @@ const ChatSection = () => {
 
   useEffect(() => {
     const handleImageAnalyzed = (event) => {
-      // New flow: show a confirmation box first with identification and suggested queries
-      const { identification, queries, timestamp } = event.detail;
-      setMessages(prev => [...prev, {
+      // Add a confirmation message into the chatbox (no popup)
+      const { identification, queries, timestamp } = event.detail || {};
+      const entry = {
         type: 'confirmation',
         identification: identification || '',
         queries: queries || [],
-        timestamp: timestamp || Date.now(),
-      }]);
+        timestamp: timestamp || Date.now()
+      };
+      setMessages(prev => [...prev, entry]);
+      // keep camera status handling elsewhere
     };
 
     const handleCameraStatus = (event) => {
-      setCameraEnabled(event.detail.enabled);
+      setCameraEnabled(Boolean(event?.detail?.enabled));
     };
 
     window.addEventListener('imageAnalyzed', handleImageAnalyzed);
@@ -48,29 +95,33 @@ const ChatSection = () => {
     };
   }, []);
 
-  useEffect(() => {
-    loadChatHistory();
-  }, []);
-
-  const loadChatHistory = async () => {
+  // loadChatHistory moved above effect to avoid hook warnings
+  const loadChatHistory = useCallback(async () => {
     try {
       const response = await fetch('/get_chat_history');
       const history = await response.json();
 
-      if (history.length > 0) {
+      if (Array.isArray(history) && history.length > 0) {
         setMessages(history.map(entry => ({
-          type: entry.type,
-          message: entry.message,
-          timestamp: entry.timestamp,
-          imageProcessed: entry.image_processed,
+          type: entry.type || 'system',
+          message: entry.message || '',
+          timestamp: entry.timestamp || Date.now(),
+          imageProcessed: entry.image_processed || false,
           amazon_search_url: entry.amazon_search_url,
-          origin_query: entry.origin_query
+          origin_query: entry.origin_query,
+          // keep identification/queries if present
+          identification: entry.identification,
+          queries: entry.queries
         })));
       }
     } catch (error) {
       console.error('Error loading chat history:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadChatHistory();
+  }, [loadChatHistory]);
 
   const sendMessage = async () => {
     const message = inputMessage.trim();
@@ -98,8 +149,8 @@ const ChatSection = () => {
       if (result.success) {
         setMessages(prev => [...prev, {
           type: 'system',
-          message: result.response,
-          timestamp: result.timestamp
+          message: result.response || '',
+          timestamp: result.timestamp || Date.now()
         }]);
       } else {
         throw new Error(result.error || 'Chat failed');
@@ -117,13 +168,11 @@ const ChatSection = () => {
   };
 
   const confirmAndSearch = async (msgIndex, searchType = 'repair') => {
-    // msgIndex is index in messages array of the confirmation message
     const msg = messages[msgIndex];
     if (!msg || msg.type !== 'confirmation') return;
     const queries = msg.queries || [];
     if (queries.length === 0) return;
 
-    // optimistically mark confirmation message as pending
     setMessages(prev => prev.map((m, i) => i === msgIndex ? { ...m, pending: true } : m));
 
     try {
@@ -134,28 +183,25 @@ const ChatSection = () => {
       });
       const result = await resp.json();
       if (result.success) {
-        // replace confirmation message with the identification (as system) and append search results
+        // replace confirmation entry with identification-as-system
         setMessages(prev => prev.map((m, i) => i === msgIndex ? ({
           type: 'system',
-          message: m.identification,
+          message: m.identification || '',
           timestamp: Date.now(),
         }) : m));
 
-        // If this was a buy request and an Amazon URL was returned, open it in a new tab
         if (searchType === 'buy' && result.amazon_search_url) {
           try {
             window.open(result.amazon_search_url, '_blank', 'noopener');
           } catch (e) {
-            // ignore popup blockers; the markdown will still contain the link
             console.warn('Could not open Amazon URL in new tab', e);
           }
         }
 
-        // Append the returned system message and include amazon_search_url/origin_query so buttons render
         setMessages(prev => [...prev, {
           type: 'system',
-          message: result.response,
-          timestamp: result.timestamp,
+          message: result.response || '',
+          timestamp: result.timestamp || Date.now(),
           amazon_search_url: result.amazon_search_url,
           origin_query: result.origin_query
         }]);
@@ -182,11 +228,10 @@ const ChatSection = () => {
       });
       const result = await resp.json();
       if (result.success) {
-        // include amazon_search_url/origin_query if present so user can check Amazon after repair tip
         setMessages(prev => [...prev, {
           type: 'system',
-          message: result.response,
-          timestamp: result.timestamp,
+          message: result.response || '',
+          timestamp: result.timestamp || Date.now(),
           amazon_search_url: result.amazon_search_url,
           origin_query: result.origin_query
         }]);
@@ -214,7 +259,7 @@ const ChatSection = () => {
     }
   };
 
-  const formatMessage = (text) => {
+  const formatMessage = (text = '') => {
     return (
       <ReactMarkdown
         components={{
@@ -230,11 +275,17 @@ const ChatSection = () => {
 
   return (
     <div className="chat-section">
-      <h2 className="chat-header">AI Repair Assistant</h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h2 className="chat-header">AI Repair Assistant</h2>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" onClick={openClearModal}>Clear Chat</button>
+        </div>
+      </div>
+
       <div className="chat-messages">
         {messages.map((msg, index) => (
           msg.type === 'confirmation' ? (
-            <div key={index} className={`message confirmation`}>
+            <div key={index} className={`message confirmation ${msg.pending ? 'pending' : ''}`}>
               <div style={{ marginBottom: 8 }}>
                 <strong>Please confirm the item:</strong>
               </div>
@@ -268,7 +319,6 @@ const ChatSection = () => {
               className={`message ${msg.type} ${msg.imageProcessed ? 'image-processed' : ''}`}
             >
               {formatMessage(msg.message)}
-              {/* If server provided amazon_search_url or origin_query, show quick action buttons */}
               {(msg.amazon_search_url || msg.origin_query) && (
                 <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
                   {msg.amazon_search_url && (
@@ -294,6 +344,7 @@ const ChatSection = () => {
         ))}
         <div ref={messagesEndRef} />
       </div>
+
       <div className="chat-input-container">
         <input
           type="text"
@@ -312,6 +363,27 @@ const ChatSection = () => {
           {isSending ? 'Sending...' : 'Send'}
         </button>
       </div>
+
+      {/* Clear Chat modal */}
+      {showClearModal && (
+        <div style={{
+          position: 'fixed', left: 0, top: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', zIndex: 2000
+        }}>
+          <div style={{
+            width: 'min(520px, 92%)', background: '#fff', borderRadius: 10, padding: 18,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.25)'
+          }}>
+            <h3 style={{ marginTop: 0 }}>Clear chat history?</h3>
+            <p style={{ marginTop: 6 }}>This will remove all messages from the conversation on this device. Server history will also be cleared.</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+              <button className="btn btn-secondary" onClick={() => setShowClearModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={doClearChat}>Clear Chat</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
