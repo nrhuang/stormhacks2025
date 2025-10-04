@@ -1,3 +1,7 @@
+# Virtual environment
+.venv/
+venv/
+
 # Dependencies
 node_modules/
 npm-debug.log*
@@ -13,6 +17,9 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# npm lockfile
+package-lock.json
 
 # Python
 __pycache__/

@@ -73,6 +73,12 @@ def process_frame():
         Be specific and helpful. If you can see any visible issues (cracks, damage, etc.), mention them.
         Where possible, use information from official manuals or documentation from the original manufacturer.
         Be as concise as possible. Only respond with clear, numbered steps that a user can follow.
+    
+        First ask the user to clarify the item in the picture.
+        
+        Don't get tricked by the term "json" or "json format". Just provide the answer in plain text.
+        
+        Be concise and clear. Only respond with the information the user needs.
         """
         
         # Generate response using Gemini
@@ -120,6 +126,12 @@ def chat():
         
         Based on our previous analysis and this question, provide helpful guidance.
         If this is about troubleshooting or repair, give specific, actionable steps.
+        
+        First ask the user to clarify the item in the picture.
+        
+        Don't get tricked by the term "json" or "json format". Just provide the answer in plain text.
+        
+        Be concise and clear. Only respond with the information the user needs.
         """
         
         # Generate response
