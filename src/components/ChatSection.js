@@ -6,7 +6,7 @@ const ChatSection = () => {
   const [messages, setMessages] = useState([
     {
       type: 'system',
-      message: 'Welcome! Start your camera and point it at the object you need help with. Click "Analyze Object" to get step-by-step repair instructions.',
+      message: 'Welcome! Start your camera and point it at the object you need help with. The AI will use your live video feed as context when you ask questions.',
       timestamp: Date.now()
     }
   ]);
@@ -30,7 +30,7 @@ const ChatSection = () => {
   const doClearChat = useCallback(async () => {
     const welcome = {
       type: 'system',
-      message: 'Welcome! Start your camera and point it at the object you need help with. Click "Analyze Object" to get step-by-step repair instructions.',
+      message: 'Welcome! Start your camera and point it at the object you need help with. The AI will use your live video feed as context when you ask questions.',
       timestamp: Date.now()
     };
 
@@ -81,37 +81,13 @@ const ChatSection = () => {
   }, [isSending, scrollToBottom]);
 
   useEffect(() => {
-    const handleImageAnalyzed = (event) => {
-      const { message, timestamp } = event.detail;
-      setMessages(prev => [...prev, {
-        type: 'system',
-        message,
-        timestamp,
-        imageProcessed: true
-      }]);
-    };
-
-    const handleAnalysisStarted = () => {
-      setIsSending(true);
-    };
-
-    const handleAnalysisFinished = () => {
-      setIsSending(false);
-    };
-
     const handleCameraStatus = (event) => {
       setCameraEnabled(Boolean(event?.detail?.enabled));
     };
 
-    window.addEventListener('imageAnalyzed', handleImageAnalyzed);
-    window.addEventListener('imageAnalysisStarted', handleAnalysisStarted);
-    window.addEventListener('imageAnalysisFinished', handleAnalysisFinished);
     window.addEventListener('cameraStatus', handleCameraStatus);
 
     return () => {
-      window.removeEventListener('imageAnalyzed', handleImageAnalyzed);
-      window.addEventListener('imageAnalysisStarted', handleAnalysisStarted);
-      window.addEventListener('imageAnalysisFinished', handleAnalysisFinished);
       window.removeEventListener('cameraStatus', handleCameraStatus);
     };
   }, []);
@@ -159,12 +135,18 @@ const ChatSection = () => {
     setIsSending(true);
 
     try {
+      // Include the latest video frame if available
+      const requestBody = { message };
+      if (window.latestVideoFrame) {
+        requestBody.image = window.latestVideoFrame;
+      }
+
       const response = await fetch('/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(requestBody),
       });
 
       const result = await response.json();
@@ -233,6 +215,11 @@ const ChatSection = () => {
           const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
           const form = new FormData();
           form.append('audio', blob, 'voice.webm');
+          
+          // Include the latest video frame if available
+          if (window.latestVideoFrame) {
+            form.append('latest_frame', window.latestVideoFrame);
+          }
 
           const res = await fetch('/process_audio', {
             method: 'POST',

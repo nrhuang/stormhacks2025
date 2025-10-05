@@ -1,12 +1,14 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import './VideoSection.css';
 
 const VideoSection = () => {
   const [stream, setStream] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState({ message: '', type: '', visible: false });
+  const [isRecording, setIsRecording] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const recordingIntervalRef = useRef(null);
 
   const showStatus = useCallback((message, type) => {
     setStatus({ message, type, visible: true });
@@ -18,6 +20,48 @@ const VideoSection = () => {
   const hideStatus = useCallback(() => {
     setStatus(prev => ({ ...prev, visible: false }));
   }, []);
+
+  const captureCurrentFrame = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current) return null;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+
+    return canvas.toDataURL('image/jpeg', 0.8);
+  }, []);
+
+  const startContinuousRecording = useCallback(() => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+    }
+
+    // Capture frame every 2 seconds and store it globally for AI context
+    recordingIntervalRef.current = setInterval(() => {
+      const frameData = captureCurrentFrame();
+      if (frameData) {
+        // Store the latest frame globally so AI can access it
+        window.latestVideoFrame = frameData;
+      }
+    }, 2000);
+
+    setIsRecording(true);
+    showStatus('Recording started - AI can now see your camera feed', 'success');
+  }, [captureCurrentFrame, showStatus]);
+
+  const stopContinuousRecording = useCallback(() => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+    setIsRecording(false);
+    window.latestVideoFrame = null;
+    showStatus('Recording stopped', 'info');
+  }, [showStatus]);
 
   const startCamera = useCallback(async () => {
     try {
@@ -34,19 +78,26 @@ const VideoSection = () => {
         videoRef.current.srcObject = mediaStream;
       }
 
+      // Wait a moment for video to be ready, then start recording
+      setTimeout(() => {
+        startContinuousRecording();
+      }, 1000);
+
       // Emit camera status event
       window.dispatchEvent(new CustomEvent('cameraStatus', {
         detail: { enabled: true }
       }));
 
-      showStatus('Camera started successfully!', 'success');
     } catch (error) {
       console.error('Error accessing camera:', error);
       showStatus('Error accessing camera. Please check permissions.', 'error');
     }
-  }, [showStatus]);
+  }, [showStatus, startContinuousRecording]);
 
   const stopCamera = useCallback(() => {
+    // Stop continuous recording first
+    stopContinuousRecording();
+    
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
       setStream(null);
@@ -62,61 +113,18 @@ const VideoSection = () => {
     }));
 
     showStatus('Camera stopped.', 'info');
-  }, [stream, showStatus]);
-  
-  const captureAndAnalyze = useCallback(async () => {
-  if (isProcessing || !videoRef.current || !canvasRef.current) return;
+  }, [stream, showStatus, stopContinuousRecording]);
 
-  setIsProcessing(true);
-  showStatus('Analyzing object...', 'info');
-
-  // Dispatch event that image analysis has started
-  window.dispatchEvent(new Event('imageAnalysisStarted'));
-  console.log('Image analysis started');
-
-  try {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0);
-
-    const imageData = canvas.toDataURL('image/jpeg', 0.8);
-
-    const response = await fetch('/process_frame', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ image: imageData }),
-    });
-
-    const result = await response.json();
-
-      if (result.success) {
-        // Emit event to chat section to add the message
-        window.dispatchEvent(new CustomEvent('imageAnalyzed', {
-          detail: { message: result.response, timestamp: result.timestamp }
-        }));
-        showStatus('Analysis complete!', 'success');
-      } else {
-        throw new Error(result.error || 'Analysis failed');
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
       }
-    } catch (error) {
-    console.error('Error analyzing frame:', error);
-    showStatus('Error analyzing object: ' + error.message, 'error');
-    } finally {
-      setIsProcessing(false);
-
-      // Dispatch event that analysis is finished
-      window.dispatchEvent(new Event('imageAnalysisFinished'));
-      console.log('Image analysis finished');
-
-      setTimeout(() => hideStatus(), 3000);
-    }
-  }, [isProcessing, showStatus, hideStatus]);
+      window.latestVideoFrame = null;
+    };
+  }, []);
+  
 
   return (
     <div className="video-section">
@@ -133,14 +141,7 @@ const VideoSection = () => {
           onClick={startCamera}
           disabled={stream !== null}
         >
-          Start Camera
-        </button>
-        <button 
-          className="btn btn-secondary" 
-          onClick={captureAndAnalyze}
-          disabled={stream === null || isProcessing}
-        >
-          {isProcessing ? 'Analyzing...' : 'Analyze Object'}
+          Start Camera & Recording
         </button>
         <button 
           className="btn btn-secondary" 

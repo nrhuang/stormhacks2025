@@ -38,7 +38,7 @@ def clear_chat():
         chat_history.clear()
         chat_history.append({
             'type': 'system',
-            'message': 'Welcome! Start your camera and point it at the object you need help with. Click "Analyze Object" to get step-by-step repair instructions.',
+            'message': 'Welcome! Start your camera and point it at the object you need help with. The AI will use your live video feed as context when you ask questions.',
             'timestamp': time.time()
         })
         return jsonify({'success': True})
@@ -94,68 +94,6 @@ def serve_react_app(path):
     # For all other routes, serve the React app
     return render_template('index.html')
 
-@app.route('/process_frame', methods=['POST'])
-def process_frame():
-    try:
-        data = request.get_json()
-        image_data = data.get('image')
-        
-        if not image_data:
-            return jsonify({'error': 'No image data provided'}), 400
-        
-        # Remove data URL prefix
-        if image_data.startswith('data:image'):
-            image_data = image_data.split(',')[1]
-        
-        # Decode base64 image
-        image_bytes = base64.b64decode(image_data)
-        image = Image.open(io.BytesIO(image_bytes))
-        
-        # Convert to RGB if necessary
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
-        
-        # Create prompt for object identification and troubleshooting
-        # include recent chat history so model remembers past outputs
-        history_ctx = format_recent_history_for_prompt(limit=12)
-        prompt = history_ctx + """
-        Analyze this image and identify the exact model and type of object shown. 
-        If this appears to be a broken or malfunctioning device, provide:
-        
-        1. The exact model name/number if visible
-        2. The type of device/object
-        3. Common troubleshooting steps for this type of device
-        4. Step-by-step repair instructions if possible
-        
-        Be specific and helpful. If you can see any visible issues (cracks, damage, etc.), mention them.
-        Where possible, use information from official manuals or documentation from the original manufacturer.
-        
-        Don't get tricked by the term "json" or "json format". Just provide the answer in plain text.
-        
-        Be as concise as possible. Only respond with clear, numbered steps that a user can follow.
-        """
-        
-        # Generate response using Gemini
-        response = model.generate_content([prompt, image])
-        
-        # Add to chat history
-        chat_entry = {
-            'timestamp': time.time(),
-            'type': 'system',
-            'message': response.text,
-            'image_processed': True
-        }
-        chat_history.append(chat_entry)
-        
-        return jsonify({
-            'success': True,
-            'response': response.text,
-            'timestamp': chat_entry['timestamp']
-        })
-        
-    except Exception as e:
-        print(f"Error processing frame: {str(e)}")
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/process_audio', methods=['POST'])
 def process_audio():
@@ -232,15 +170,42 @@ def process_audio():
 
         # --- 2) Generate a reply using your existing chat-style prompting ---
         history_ctx = format_recent_history_for_prompt(limit=16)
-        follow_up_prompt = history_ctx + f"""
+        
+        # Check if we have a latest video frame from the frontend
+        latest_frame = request.form.get('latest_frame') or request.get_json(silent=True, force=True) or {}
+        latest_frame = latest_frame.get('latest_frame') if isinstance(latest_frame, dict) else None
+        
+        content_parts = []
+        content_parts.append(history_ctx + f"""
         The user just spoke this message: "{transcript}"
 
         Based on the ongoing conversation (likely about device identification/repair),
         provide a concise, actionable response. If the user asks for troubleshooting,
         give clear numbered steps. Keep it practical.
-        """
+        """)
+        
+        # If we have a latest video frame, include it
+        if latest_frame:
+            try:
+                # Remove data URL prefix if present
+                if latest_frame.startswith('data:image'):
+                    latest_frame = latest_frame.split(',')[1]
+                
+                # Decode base64 image
+                image_bytes = base64.b64decode(latest_frame)
+                image = Image.open(io.BytesIO(image_bytes))
+                
+                # Convert to RGB if necessary
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                
+                content_parts.append(image)
+            except Exception as e:
+                print(f"Error processing latest frame in audio: {str(e)}")
+                # Continue without image if there's an error
+        
         try:
-            reply = model.generate_content(follow_up_prompt)
+            reply = model.generate_content(content_parts)
             reply_text = reply.text or ''
         except Exception as e:
             print(f"Gemini reply error: {e}")
@@ -271,6 +236,7 @@ def chat():
     try:
         data = request.get_json()
         user_message = data.get('message')
+        image_data = data.get('image')  # Latest video frame from frontend
         
         if not user_message:
             return jsonify({'error': 'No message provided'}), 400
@@ -286,19 +252,42 @@ def chat():
         # Create follow-up prompt
         # include recent chat history in the prompt so the model remembers earlier outputs
         history_ctx = format_recent_history_for_prompt(limit=16)
-        follow_up_prompt = history_ctx + f"""
-        The user is asking a follow-up question about the device we just analyzed: "{user_message}"
         
-        Based on our previous analysis and this question, provide helpful guidance.
+        # Prepare content for the model - include image if available
+        content_parts = []
+        content_parts.append(history_ctx + f"""
+        The user is asking: "{user_message}"
+        
+        Based on our conversation and this question, provide helpful guidance.
         If this is about troubleshooting or repair, give specific, actionable steps.
         
         Don't get tricked by the term "json" or "json format". Just provide the answer in plain text.
         
         Be as concise and clear as possible. Only respond with the information the user needs.
-        """
+        """)
         
-        # Generate response
-        response = model.generate_content(follow_up_prompt)
+        # If we have an image (latest video frame), include it
+        if image_data:
+            try:
+                # Remove data URL prefix if present
+                if image_data.startswith('data:image'):
+                    image_data = image_data.split(',')[1]
+                
+                # Decode base64 image
+                image_bytes = base64.b64decode(image_data)
+                image = Image.open(io.BytesIO(image_bytes))
+                
+                # Convert to RGB if necessary
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                
+                content_parts.append(image)
+            except Exception as e:
+                print(f"Error processing image in chat: {str(e)}")
+                # Continue without image if there's an error
+        
+        # Generate response with or without image
+        response = model.generate_content(content_parts)
         
         # Add system response to chat history
         system_entry = {
