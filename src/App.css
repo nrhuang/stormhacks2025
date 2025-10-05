@@ -1,4 +1,4 @@
-.container {
+/* .container {
   display: flex;
   height: 100vh;
   gap: 20px;
@@ -142,4 +142,213 @@
   100% {
     transform: rotate(360deg);
   }
+} */
+
+/* global background + text */
+body {
+  background: #a3c6d7; /* Light Blue overall background */
+  color: #1c3655; /* Dark Navy Blue text */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  display: flex;
+  height: 100vh;
+  gap: 20px;
+  padding: 20px;
+}
+
+/* card backgrounds use pale grayish blue */
+.video-section,
+.chat-section {
+  flex: 1;
+  background: #d0dde2; /* Pale Grayish Blue circle/behind-text */
+  border-radius: 15px;
+  padding: 20px;
+  box-shadow: 0 10px 30px rgba(121, 123, 126, 0.12); /* Gray shadow/edge detail */
+  display: flex;
+  flex-direction: column;
+}
+
+.video-container {
+  flex: 1;
+  position: relative;
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* buttons */
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 25px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: white;
+  box-shadow: 0 6px 18px rgba(121, 123, 126, 0.08);
+}
+
+/* Primary: dark navy gradient */
+.btn-primary {
+  background: linear-gradient(45deg, #1c3655 0%, #27476b 100%);
+  color: #ffffff;
+  border: 1px solid rgba(28,54,85,0.12);
+}
+
+.btn-primary:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px rgba(28, 54, 85, 0.12);
+}
+
+/* Secondary: orange (wrench + outline) */
+.btn-secondary {
+  background: linear-gradient(45deg, #e58133 0%, #ff9b4a 100%);
+  color: #ffffff;
+  border: 1px solid rgba(229,129,51,0.12);
+}
+
+.btn-secondary:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px rgba(229,129,51,0.12);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* status banners use palette */
+.status {
+  text-align: center;
+  padding: 10px;
+  margin: 10px 0;
+  border-radius: 10px;
+  font-weight: 600;
+  color: #1c3655;
+  background: rgba(208, 221, 226, 0.9);
+  border: 1px solid rgba(28, 54, 85, 0.08);
+}
+
+.status.success {
+  background: rgba(208, 221, 226, 0.95);
+  color: #1c3655;
+  border: 1px solid rgba(121,123,126,0.08);
+}
+
+.status.error {
+  background: rgba(229,129,51,0.08);
+  color: #1c3655;
+  border: 1px solid rgba(229,129,51,0.14);
+}
+
+.status.info {
+  background: rgba(163,198,215,0.14);
+  color: #1c3655;
+  border: 1px solid rgba(28,54,85,0.08);
+}
+
+.hidden {
+  display: none;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* loading spinner uses orange accent */
+.loading {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255,255,255,0.9);
+  border-top: 3px solid #e58133; /* orange */
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Chat/message specific tweaks */
+.chat-section .chat-header,
+.video-section h2 {
+  color: #1c3655;
+}
+
+/* subtle borders for message bubbles */
+.message {
+  background: rgba(255,255,255,0.85);
+  color: #1c3655;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 6px 0;
+  border: 1px solid rgba(121,123,126,0.06);
+}
+
+/* typing indicator dots */
+.message.typing {
+  opacity: 0.98;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.9);
+  display: inline-block;
+  max-width: 60%;
+  margin: 6px 0;
+  border: 1px solid rgba(121,123,126,0.06);
+}
+
+.typing-dots {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.typing-dots .dot {
+  width: 8px;
+  height: 8px;
+  background: #1c3655;
+  border-radius: 50%;
+  display: inline-block;
+  animation: typing-bounce 1s infinite ease-in-out;
+  opacity: 0.9;
+}
+
+.typing-dots .dot:nth-child(2) { animation-delay: 0.12s; }
+.typing-dots .dot:nth-child(3) { animation-delay: 0.24s; }
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.7; }
+  30% { transform: translateY(-6px); opacity: 1; }
 }

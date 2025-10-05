@@ -1,10 +1,11 @@
 .chat-header {
   font-size: 24px;
   font-weight: 700;
-  color: #333;
+  color: #1c3655; /* fallback */
   margin-bottom: 20px;
   text-align: center;
-  background: linear-gradient(45deg, #667eea, #764ba2);
+  /* gradient from Dark Navy Blue to Orange */
+  background: #1c3655;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

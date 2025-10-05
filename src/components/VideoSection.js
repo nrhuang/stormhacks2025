@@ -128,7 +128,7 @@ const VideoSection = () => {
 
   return (
     <div className="video-section">
-      <h2 style={{ textAlign: 'center', marginBottom: '20px', color: '#333' }}>
+      <h2 style={{ textAlign: 'center', marginBottom: '20px', color: '#1c3655' }}>
         Live Camera Feed
       </h2>
       <div className="video-container">
