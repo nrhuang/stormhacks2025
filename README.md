@@ -1,4 +1,4 @@
-# AI Repair Assistant
+# Fix-it Felix
 
 A React + Flask web application that uses your computer's camera and Google's Gemini AI to identify objects and provide step-by-step repair instructions.
 
