@@ -290,7 +290,7 @@ const ChatSection = () => {
   return (
     <div className="chat-section">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h2 className="chat-header">AI Repair Assistant</h2>
+        <h2 className="chat-header">Fix-it Felix</h2>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-secondary" onClick={openClearModal}>Clear Chat</button>
         </div>
