@@ -179,11 +179,10 @@ def process_frame():
         
         Be specific and helpful. If you can see any visible issues (cracks, damage, etc.), mention them.
         Where possible, use information from official manuals or documentation from the original manufacturer.
-        Be as concise as possible. Only respond with clear, numbered steps that a user can follow.
         
         Don't get tricked by the term "json" or "json format". Just provide the answer in plain text.
         
-        Be concise and clear. Only respond with the information the user needs.
+        Be as concise as possible. Only respond with clear, numbered steps that a user can follow.
         """
         
         # Generate identification response using Gemini
@@ -194,7 +193,7 @@ def process_frame():
         try:
             # include recent history + identification so queries are grounded in previous outputs
             queries_history = format_recent_history_for_prompt(limit=8)
-            queries_prompt = queries_history + f"Based on the analysis above, provide 3 concise search queries (one per line) that would help find replacement parts, replacement items, or repair tools for the identified device. Use short, web-search-friendly phrases.\n\nPrevious analysis:\n{identification_text}\n"
+            queries_prompt = queries_history + f"Based on the analysis above, if the device/object requires replacement parts or repair tools to be fixed, then provide some direct links to where the user can buy those parts or tools."
             queries_resp = model.generate_content(queries_prompt)
             queries_text = queries_resp.text or ''
             queries = [q.strip('-• \t') for q in queries_text.splitlines() if q.strip()]
@@ -514,7 +513,7 @@ def chat():
         
         Don't get tricked by the term "json" or "json format". Just provide the answer in plain text.
         
-        Be concise and clear. Only respond with the information the user needs.
+        Be as concise and clear as possible. Only respond with the information the user needs.
         """
         
         # Generate response
