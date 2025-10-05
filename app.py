@@ -88,7 +88,7 @@ def generate_tts_audio(text):
         print(f"Error generating TTS: {e}")
         return None
 
-@app.route('/clear_chat', methods=['POST'])
+@app.route('/api/clear_chat', methods=['POST'])
 def clear_chat():
     try:
         chat_history.clear()
@@ -137,21 +137,7 @@ def _strip_data_url_prefix(b64_or_data_url: str) -> tuple[bytes, str]:
         # Not base64—assume we already got raw bytes
         return b64_or_data_url if isinstance(b64_or_data_url, (bytes, bytearray)) else b'', 'application/octet-stream'
 
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/<path:path>')
-def serve_react_app(path):
-    """Serve the React app for any non-API routes"""
-    if path.startswith('api/'):
-        return jsonify({'error': 'API endpoint not found'}), 404
-    
-    # For all other routes, serve the React app
-    return render_template('index.html')
-
-
-@app.route('/process_audio', methods=['POST'])
+@app.route('/api/process_audio', methods=['POST'])
 def process_audio():
     """
     Accepts audio (webm/ogg/mp3/wav) via:
@@ -308,7 +294,7 @@ def process_audio():
         print(f"Error in process_audio: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/chat', methods=['POST'])
+@app.route('/api/chat', methods=['POST'])
 def chat():
     try:
         data = request.get_json()
@@ -416,7 +402,7 @@ def chat():
         print(f"Error in chat: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/get_chat_history')
+@app.route('/api/get_chat_history')
 def get_chat_history():
     return jsonify(chat_history)
 
