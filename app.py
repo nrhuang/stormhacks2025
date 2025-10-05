@@ -88,7 +88,7 @@ def generate_tts_audio(text):
         print(f"Error generating TTS: {e}")
         return None
 
-@app.route('/api/clear_chat', methods=['GET'])
+@app.route('/api', methods=['GET'])
 def test():
     return jsonify({'status': 'ok'})
 
