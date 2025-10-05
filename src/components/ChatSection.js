@@ -75,6 +75,12 @@ const ChatSection = () => {
   }, [messages, scrollToBottom]);
 
   useEffect(() => {
+    if (isSending) {
+      try { scrollToBottom(); } catch (e) {}
+    }
+  }, [isSending, scrollToBottom]);
+
+  useEffect(() => {
     const handleImageAnalyzed = (event) => {
       // Add a confirmation message into the chatbox (no popup)
       const { identification, queries, timestamp } = event.detail || {};
@@ -435,6 +441,15 @@ const ChatSection = () => {
             </div>
           )
         ))}
+        {isSending && (
+          <div className="message system typing" aria-live="polite">
+            <div className="typing-dots" aria-hidden="true">
+             <span className="dot" />
+             <span className="dot" />
+            <span className="dot" />
+           </div>
+         </div>
+         )}
         <div ref={messagesEndRef} />
       </div>
 
