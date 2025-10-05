@@ -98,7 +98,7 @@ const ChatSection = () => {
 
     // server-side clear
     try {
-      const res = await fetch('/api/clear_chat', { method: 'POST' });
+      const res = await fetch('https://stormhacks2025-hpwt.onrender.com/api/clear_chat', { method: 'POST' });
       const contentType = res.headers.get('content-type') || '';
       if (!res.ok) {
         console.error('Failed to clear chat on server:', res.status, res.statusText);
@@ -156,7 +156,7 @@ const ChatSection = () => {
   // loadChatHistory moved above effect to avoid hook warnings
   const loadChatHistory = useCallback(async () => {
     try {
-      const response = await fetch('/api/get_chat_history');
+      const response = await fetch('https://stormhacks2025-hpwt.onrender.com/api/get_chat_history');
       const history = await response.json();
 
       if (Array.isArray(history) && history.length > 0) {
@@ -195,7 +195,7 @@ const ChatSection = () => {
         requestBody.image = window.latestVideoFrame;
       }
 
-      const response = await fetch('/api/chat', {
+      const response = await fetch('https://stormhacks2025-hpwt.onrender.com/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -282,7 +282,7 @@ const ChatSection = () => {
             form.append('latest_frame', window.latestVideoFrame);
           }
 
-          const res = await fetch('/api/process_audio', {
+          const res = await fetch('https://stormhacks2025-hpwt.onrender.com/api/process_audio', {
             method: 'POST',
             body: form
           });
