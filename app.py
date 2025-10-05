@@ -287,7 +287,19 @@ def process_audio():
         # Add TTS audio if generated successfully
         if tts_audio:
             response_data['tts_audio'] = tts_audio
-
+        print(reply_text)
+        if 'replac' in reply_text or 'buy' in reply_text or 'purchas' in reply_text:
+            print("hello")
+            try:
+                links_response = get_links(reply_text)
+                links_data = links_response.get_json()
+                response_data['product_links'] = links_data.get('links', [])
+                response_data['search_queries'] = links_data.get('search_queries', [])
+                print(response_data)
+            except Exception as e:
+                print(f"Error fetching product links: {e}")
+                # Continue without links if there's an error
+        
         return jsonify(response_data)
 
     except Exception as e:
