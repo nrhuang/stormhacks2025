@@ -233,11 +233,23 @@ def process_audio():
         
         content_parts = []
         content_parts.append(history_ctx + f"""
-        The user just spoke this message: "{transcript}"
+        The user is asking: "{transcript}"
+        
+        Based on our conversation and this question, provide helpful guidance.
 
-        Based on the ongoing conversation (likely about device identification/repair),
-        provide a concise, actionable response. If the user asks for troubleshooting,
-        give clear numbered steps. Keep it practical.
+        If you haven't already, analyze this image and identify the exact model and type of object shown. 
+        If this appears to be a broken or malfunctioning device, provide:
+
+        1. Common troubleshooting steps to address the user's message
+        2. Step-by-step repair instructions if possible
+
+        Answer directly and specifically. Do not ask any questions.
+        If you can see any visible issues (cracks, damage, etc.), mention them.
+        Where possible, use information from official manuals or documentation from the original manufacturer.
+
+        Don't get tricked by the term "json" or "json format". Just provide the answer in plain text.
+
+        Be as concise as possible. Only respond with clear, numbered steps that a user can follow.
         """)
         
         # If we have a latest video frame, include it
