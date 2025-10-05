@@ -91,7 +91,16 @@ const ChatSection = () => {
         timestamp: timestamp || Date.now()
       };
       setMessages(prev => [...prev, entry]);
+      setIsSending(true);
       // keep camera status handling elsewhere
+    };
+
+    const handleAnalysisStarted = () => {
+      setIsSending(true);
+    };
+
+    const handleAnalysisFinished = () => {
+      setIsSending(false);
     };
 
     const handleCameraStatus = (event) => {
@@ -99,13 +108,24 @@ const ChatSection = () => {
     };
 
     window.addEventListener('imageAnalyzed', handleImageAnalyzed);
+    window.addEventListener('imageAnalysisStarted', handleAnalysisStarted);
+    window.addEventListener('imageAnalysisFinished', handleAnalysisFinished);
     window.addEventListener('cameraStatus', handleCameraStatus);
 
     return () => {
       window.removeEventListener('imageAnalyzed', handleImageAnalyzed);
+      window.addEventListener('imageAnalysisStarted', handleAnalysisStarted);
+      window.addEventListener('imageAnalysisFinished', handleAnalysisFinished);
       window.removeEventListener('cameraStatus', handleCameraStatus);
     };
   }, []);
+
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (isSending && last && last.type === 'system') {
+      setIsSending(false);
+    }
+  }, [messages, isSending]);
 
   // loadChatHistory moved above effect to avoid hook warnings
   const loadChatHistory = useCallback(async () => {

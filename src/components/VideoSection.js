@@ -33,12 +33,12 @@ const VideoSection = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
       }
-      
+
       // Emit camera status event
       window.dispatchEvent(new CustomEvent('cameraStatus', {
         detail: { enabled: true }
       }));
-      
+
       showStatus('Camera started successfully!', 'success');
     } catch (error) {
       console.error('Error accessing camera:', error);
@@ -55,68 +55,74 @@ const VideoSection = () => {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    
+
     // Emit camera status event
     window.dispatchEvent(new CustomEvent('cameraStatus', {
       detail: { enabled: false }
     }));
-    
+
     showStatus('Camera stopped.', 'info');
   }, [stream, showStatus]);
-
+  
   const captureAndAnalyze = useCallback(async () => {
-    if (isProcessing || !videoRef.current || !canvasRef.current) return;
+  if (isProcessing || !videoRef.current || !canvasRef.current) return;
 
-    setIsProcessing(true);
-    showStatus('Analyzing object...', 'info');
+  setIsProcessing(true);
+  showStatus('Analyzing object...', 'info');
 
-    try {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
+  // Dispatch event that image analysis has started
+  window.dispatchEvent(new Event('imageAnalysisStarted'));
+  console.log('Image analysis started');
 
-      // Set canvas dimensions to match video
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+  try {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
 
-      // Draw current video frame to canvas
-      ctx.drawImage(video, 0, 0);
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
 
-      // Convert to base64
-      const imageData = canvas.toDataURL('image/jpeg', 0.8);
+    const imageData = canvas.toDataURL('image/jpeg', 0.8);
 
-      // Send to server for processing
-      const response = await fetch('/process_frame', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ image: imageData }),
-      });
+    const response = await fetch('/process_frame', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ image: imageData }),
+    });
 
-      const result = await response.json();
+    const result = await response.json();
 
-      if (result.success) {
-        // Emit event to chat section to add the message and suggested queries
-        window.dispatchEvent(new CustomEvent('imageAnalyzed', {
-          detail: {
-            identification: result.identification || result.response,
-            queries: result.queries || [],
-            timestamp: result.timestamp
-          }
-        }));
-        showStatus('Analysis complete!', 'success');
-      } else {
-        throw new Error(result.error || 'Analysis failed');
-      }
-    } catch (error) {
-      console.error('Error analyzing frame:', error);
-      showStatus('Error analyzing object: ' + error.message, 'error');
-    } finally {
-      setIsProcessing(false);
-      setTimeout(() => hideStatus(), 3000);
+    if (result.success) {
+      // Emit event with analysis results
+      window.dispatchEvent(new CustomEvent('imageAnalyzed', {
+        detail: {
+          identification: result.identification || result.response,
+          queries: result.queries || [],
+          timestamp: result.timestamp
+        }
+      }));
+      console.log('Image analyzed', result);
+
+      showStatus('Analysis complete!', 'success');
+    } else {
+      throw new Error(result.error || 'Analysis failed');
     }
-  }, [isProcessing, showStatus, hideStatus]);
+  } catch (error) {
+    console.error('Error analyzing frame:', error);
+    showStatus('Error analyzing object: ' + error.message, 'error');
+  } finally {
+    setIsProcessing(false);
+
+    // Dispatch event that analysis is finished
+    window.dispatchEvent(new Event('imageAnalysisFinished'));
+    console.log('Image analysis finished');
+
+    setTimeout(() => hideStatus(), 3000);
+  }
+}, [isProcessing, showStatus, hideStatus]);
 
   return (
     <div className="video-section">
