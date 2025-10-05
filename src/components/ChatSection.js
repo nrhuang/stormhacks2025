@@ -155,7 +155,8 @@ const ChatSection = () => {
         setMessages(prev => [...prev, {
           type: 'system',
           message: result.response || '',
-          timestamp: result.timestamp || Date.now()
+          timestamp: result.timestamp || Date.now(),
+          product_links: result.product_links,
         }]);
       } else {
         throw new Error(result.error || 'Chat failed');
@@ -290,6 +291,14 @@ const ChatSection = () => {
             className={`message ${msg.type} ${msg.imageProcessed ? 'image-processed' : ''}`}
           >
             {formatMessage(msg.message)}
+            {msg.product_links && (
+              <div>
+                Here are some purchase links if you are missing any of the items mentioned in my suggestions:
+                  {msg.product_links.map((link) => (
+                    formatMessage('- <' + link.url + '>')
+                  ))}
+              </div>
+            )}
           </div>
         ))}
         {isSending && (

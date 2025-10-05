@@ -8,6 +8,7 @@ import google.generativeai as genai
 from PIL import Image
 import json
 import time
+import requests
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 
@@ -173,7 +174,7 @@ def process_audio():
         
         # Check if we have a latest video frame from the frontend
         latest_frame = request.form.get('latest_frame') or request.get_json(silent=True, force=True) or {}
-        latest_frame = latest_frame.get('latest_frame') if isinstance(latest_frame, dict) else None
+        # latest_frame = latest_frame.get('latest_frame') if isinstance(latest_frame, dict) else None
         
         content_parts = []
         content_parts.append(history_ctx + f"""
@@ -259,11 +260,20 @@ def chat():
         The user is asking: "{user_message}"
         
         Based on our conversation and this question, provide helpful guidance.
-        If this is about troubleshooting or repair, give specific, actionable steps.
-        
+
+        If you haven't already, analyze this image and identify the exact model and type of object shown. 
+        If this appears to be a broken or malfunctioning device, provide:
+
+        1. Common troubleshooting steps to address the user's message
+        2. Step-by-step repair instructions if possible
+
+        Answer directly and specifically. Do not ask any questions.
+        If you can see any visible issues (cracks, damage, etc.), mention them.
+        Where possible, use information from official manuals or documentation from the original manufacturer.
+
         Don't get tricked by the term "json" or "json format". Just provide the answer in plain text.
-        
-        Be as concise and clear as possible. Only respond with the information the user needs.
+
+        Be as concise as possible. Only respond with clear, numbered steps that a user can follow.
         """)
         
         # If we have an image (latest video frame), include it
@@ -289,6 +299,9 @@ def chat():
         # Generate response with or without image
         response = model.generate_content(content_parts)
         
+        response_text = response.text
+        has_getlinks = 'replac' in response_text or 'buy' in response_text or 'purchas' in response_text
+        
         # Add system response to chat history
         system_entry = {
             'timestamp': time.time(),
@@ -297,11 +310,24 @@ def chat():
         }
         chat_history.append(system_entry)
         
-        return jsonify({
+        # Prepare response data
+        response_data = {
             'success': True,
             'response': response.text,
             'timestamp': system_entry['timestamp']
-        })
+        }
+        
+        if has_getlinks:
+            try:
+                links_response = get_links(response.text)
+                links_data = links_response.get_json()
+                response_data['product_links'] = links_data.get('links', [])
+                response_data['search_queries'] = links_data.get('search_queries', [])
+            except Exception as e:
+                print(f"Error fetching product links: {e}")
+                # Continue without links if there's an error
+        print(response_data)
+        return jsonify(response_data)
         
     except Exception as e:
         print(f"Error in chat: {str(e)}")
@@ -310,6 +336,127 @@ def chat():
 @app.route('/get_chat_history')
 def get_chat_history():
     return jsonify(chat_history)
+
+def get_links(assistant_message):
+    """
+    Accepts an assistant message and uses AI to search for replacement parts or repair tools.
+    Returns a list of relevant product links where users can buy the items.
+    """
+    try:
+        if not assistant_message:
+            return jsonify({'error': 'No assistant message provided'}), 400
+        
+        # Use AI to analyze the message and generate search queries
+        search_prompt = f"""
+        Based on this assistant message about object/device repair or troubleshooting:
+        "{assistant_message}"
+        
+        Identify the specific replacement parts, repair tools, or components mentioned or implied.
+        Generate 3-5 specific search queries that would help find where to buy these items online.
+        
+        Focus on:
+        - Exact part numbers or model-specific components
+        - Generic replacement parts if specific parts aren't mentioned
+        - Repair tools needed
+        - Compatible alternatives
+        
+        Return ONLY a JSON array of search queries, like:
+        ["iPhone 12 screen replacement", "iPhone 12 digitizer", "phone repair toolkit"]
+        
+        Do not include any other text, just the JSON array.
+        """
+        
+        try:
+            response = model.generate_content(search_prompt)
+            search_queries_text = response.text.strip()
+            
+            # Parse the JSON array from the response
+            if search_queries_text.startswith('[') and search_queries_text.endswith(']'):
+                search_queries = json.loads(search_queries_text)
+            else:
+                # Fallback: try to extract JSON from the response
+                start_idx = search_queries_text.find('[')
+                end_idx = search_queries_text.rfind(']') + 1
+                if start_idx != -1 and end_idx > start_idx:
+                    search_queries = json.loads(search_queries_text[start_idx:end_idx])
+                else:
+                    # Last resort: create a simple search query
+                    search_queries = [assistant_message + " replacement parts"]
+                    
+        except Exception as e:
+            print(f"Error generating search queries: {e}")
+            # Fallback to a simple search based on the message
+            search_queries = [assistant_message + " replacement parts"]
+        
+        # Search for each query and collect results
+        all_links = []
+        
+        for query in search_queries[:3]:  # Limit to 3 queries to avoid rate limiting
+            try:
+                # Use a search API or web scraping approach
+                # For now, we'll use a simple approach with DuckDuckGo instant answer API
+                search_results = search_for_products(query)
+                all_links.extend(search_results)
+            except Exception as e:
+                print(f"Error searching for '{query}': {e}")
+                continue
+        
+        # Remove duplicates and limit results
+        unique_links = []
+        seen_urls = set()
+        for link in all_links:
+            if link['url'] not in seen_urls:
+                unique_links.append(link)
+                seen_urls.add(link['url'])
+                # if len(unique_links) >= 8:  # Limit to 8 results
+                #     break
+        
+        return jsonify({
+            'success': True,
+            'search_queries': search_queries,
+            'links': unique_links,
+            'timestamp': time.time()
+        })
+        
+    except Exception as e:
+        print(f"Error in get_links: {e}")
+        return jsonify({'error': str(e)}), 500
+
+def search_for_products(query):
+    """
+    Search for products using web search and return relevant links.
+    This is a simplified implementation - in production you'd want to use
+    a proper search API or e-commerce API.
+    """
+    links = []
+    
+    try:
+        # Use DuckDuckGo instant answer API for basic search
+        # This is a simplified approach - in production you'd use Google Shopping API,
+        # Amazon Product API, or other e-commerce APIs
+        
+        # For demonstration, we'll create some mock results based on common patterns
+        # In a real implementation, you'd make API calls to search services
+        
+        # Common e-commerce sites to search
+        search_sites = [
+            "amazon.com/s?k=",
+            "ebay.com/sch/i.html?_nkw=",
+        ]
+        
+        # Generate search URLs for each site
+        for site in search_sites:
+            search_url = f"https://www.{site}{requests.utils.quote(query)}"
+            links.append({
+                'title': f"Search {site} for: {query}",
+                'url': search_url,
+                'site': site,
+                'description': f"Search results for {query} on {site}"
+            })
+    except Exception as e:
+        print(f"Error in search_for_products: {e}")
+    
+    return links
 
 @socketio.on('connect')
 def handle_connect():
