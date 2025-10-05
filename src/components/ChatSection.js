@@ -291,7 +291,7 @@ const ChatSection = () => {
           if (data && data.success) {
             // show transcript as the user's message and assistant reply
             setMessages(prev => [...prev,
-              { type: 'user', message: data.transcript, timestamp: Date.now(), product_links: data.product_links },
+              { type: 'user', message: data.transcript, timestamp: Date.now() },
               { type: 'system', message: data.response, timestamp: data.timestamp, product_links: data.product_links }
             ]);
             
