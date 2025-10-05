@@ -94,7 +94,7 @@ def clear_chat():
         chat_history.clear()
         chat_history.append({
             'type': 'system',
-            'message': 'Welcome! Start your camera and point it at the object you need help with. The AI will use your live video feed as context when you ask questions.',
+            'message': 'Welcome! Start your camera and point it at the object you need help with. I will use your live video feed as context when you ask questions.',
             'timestamp': time.time()
         })
         return jsonify({'success': True})

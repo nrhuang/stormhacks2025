@@ -6,7 +6,7 @@ const ChatSection = () => {
   const [messages, setMessages] = useState([
     {
       type: 'system',
-      message: 'Welcome! Start your camera and point it at the object you need help with. The AI will use your live video feed as context when you ask questions.',
+      message: 'Welcome! Start your camera and point it at the object you need help with. I will use your live video feed as context when you ask questions.',
       timestamp: Date.now()
     }
   ]);
@@ -74,7 +74,7 @@ const ChatSection = () => {
   const doClearChat = useCallback(async () => {
     const welcome = {
       type: 'system',
-      message: 'Welcome! Start your camera and point it at the object you need help with. The AI will use your live video feed as context when you ask questions.',
+      message: 'Welcome! Start your camera and point it at the object you need help with. I will use your live video feed as context when you ask questions.',
       timestamp: Date.now()
     };
 
@@ -214,9 +214,7 @@ const ChatSection = () => {
         }]);
         
         // Play TTS audio if available
-        console.log("byeeeeeeeeeeeee")
         if (result.tts_audio) {
-          console.log("hellooooooooooo")
           playTTSAudio(result.tts_audio);
         }
       } else {
@@ -274,6 +272,7 @@ const ChatSection = () => {
 
       mr.onstop = async () => {
         try {
+          setIsSending(true);
           const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
           const form = new FormData();
           form.append('audio', blob, 'voice.webm');
@@ -311,6 +310,7 @@ const ChatSection = () => {
             timestamp: Date.now()
           }]);
         } finally {
+          setIsSending(false);
           // cleanup stream
           if (streamRef.current) {
             streamRef.current.getTracks().forEach(t => t.stop());
