@@ -64,6 +64,23 @@ def format_recent_history_for_prompt(limit=12):
         pass
     return ''
 
+def _strip_data_url_prefix(b64_or_data_url: str) -> tuple[bytes, str]:
+    """
+    Returns (raw_bytes, mime_type). Accepts 'data:*;base64,...' or plain base64.
+    Tries to default to audio/webm if mime not present.
+    """
+    try:
+        if b64_or_data_url.startswith('data:'):
+            header, b64 = b64_or_data_url.split(',', 1)
+            # e.g. data:audio/webm;codecs=opus;base64,XXXX
+            mt = header.split(':', 1)[1].split(';', 1)[0]
+            return base64.b64decode(b64), mt
+        # plain base64
+        return base64.b64decode(b64_or_data_url), 'audio/webm'
+    except Exception:
+        # Not base64—assume we already got raw bytes
+        return b64_or_data_url if isinstance(b64_or_data_url, (bytes, bytearray)) else b'', 'application/octet-stream'
+
 @app.route('/')
 def index():
     return render_template('index.html')
