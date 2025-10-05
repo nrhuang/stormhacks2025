@@ -91,18 +91,37 @@ const ChatSection = () => {
       }]);
     };
 
+    const handleAnalysisStarted = () => {
+      setIsSending(true);
+    };
+
+    const handleAnalysisFinished = () => {
+      setIsSending(false);
+    };
+
     const handleCameraStatus = (event) => {
       setCameraEnabled(Boolean(event?.detail?.enabled));
     };
 
     window.addEventListener('imageAnalyzed', handleImageAnalyzed);
+    window.addEventListener('imageAnalysisStarted', handleAnalysisStarted);
+    window.addEventListener('imageAnalysisFinished', handleAnalysisFinished);
     window.addEventListener('cameraStatus', handleCameraStatus);
 
     return () => {
       window.removeEventListener('imageAnalyzed', handleImageAnalyzed);
+      window.addEventListener('imageAnalysisStarted', handleAnalysisStarted);
+      window.addEventListener('imageAnalysisFinished', handleAnalysisFinished);
       window.removeEventListener('cameraStatus', handleCameraStatus);
     };
   }, []);
+
+  // useEffect(() => {
+  //   const last = messages[messages.length - 1];
+  //   if (isSending && last && last.type === 'system') {
+  //     setIsSending(false);
+  //   }
+  // }, [messages, isSending]);
 
   // loadChatHistory moved above effect to avoid hook warnings
   const loadChatHistory = useCallback(async () => {
