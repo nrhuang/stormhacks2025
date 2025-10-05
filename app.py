@@ -11,6 +11,8 @@ import time
 import requests
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
+from elevenlabs.client import ElevenLabs
+import re
 
 
 load_dotenv()
@@ -26,12 +28,65 @@ genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
 # Initialize the Gemini model
 model = genai.GenerativeModel('gemini-2.0-flash-exp')
 
+# Initialize ElevenLabs client
+# You'll need to set your API key as an environment variable: ELEVENLABS_API_KEY
+elevenlabs_client = None
+try:
+    elevenlabs_api_key = os.getenv('ELEVENLABS_API_KEY')
+    if elevenlabs_api_key:
+        elevenlabs_client = ElevenLabs(api_key=elevenlabs_api_key)
+    else:
+        print("Warning: ELEVENLABS_API_KEY not found. Text-to-speech will be disabled.")
+except Exception as e:
+    print(f"Warning: Failed to initialize ElevenLabs client: {e}")
+
 # Store chat history
 chat_history = []
 
 def add_chat_entry(entry):
     """Append an entry to in-memory chat history (no on-disk persistence)."""
     chat_history.append(entry)
+
+def remove_links_from_text(text):
+    """Remove URLs and markdown links from text for TTS."""
+    # Remove markdown links [text](url)
+    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+    # Remove standalone URLs
+    text = re.sub(r'https?://[^\s]+', '', text)
+    # Remove email addresses
+    text = re.sub(r'\S+@\S+\.\S+', '', text)
+    # Clean up extra whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+def generate_tts_audio(text):
+    """Generate TTS audio using ElevenLabs API."""
+    if not elevenlabs_client:
+        return None
+        
+    try:
+        # Remove links and clean text for TTS
+        clean_text = remove_links_from_text(text)
+        
+        if not clean_text or len(clean_text.strip()) < 3:
+            return None
+            
+        # Generate speech using ElevenLabs
+        audio = elevenlabs_client.text_to_speech.convert(
+            text=clean_text,
+            voice_id="JBFqnCBsd6RMkjVDRZzb",
+            model_id="eleven_multilingual_v2"
+        )
+        
+        # Convert audio generator to bytes
+        audio_bytes = b"".join(audio)
+        
+        # Return base64 encoded audio
+        return base64.b64encode(audio_bytes).decode('utf-8')
+        
+    except Exception as e:
+        print(f"Error generating TTS: {e}")
+        return None
 
 @app.route('/clear_chat', methods=['POST'])
 def clear_chat():
@@ -220,13 +275,22 @@ def process_audio():
         }
         add_chat_entry(system_entry)
 
-        return jsonify({
+        # Generate TTS audio for the response
+        tts_audio = generate_tts_audio(reply_text)
+
+        response_data = {
             'success': True,
             'transcript': transcript,
             'response': reply_text,
             'timestamp': system_entry['timestamp'],
             'mime_type': mime
-        })
+        }
+        
+        # Add TTS audio if generated successfully
+        if tts_audio:
+            response_data['tts_audio'] = tts_audio
+
+        return jsonify(response_data)
 
     except Exception as e:
         print(f"Error in process_audio: {e}")
@@ -310,12 +374,19 @@ def chat():
         }
         chat_history.append(system_entry)
         
+        # Generate TTS audio for the response
+        tts_audio = generate_tts_audio(response.text)
+        
         # Prepare response data
         response_data = {
             'success': True,
             'response': response.text,
             'timestamp': system_entry['timestamp']
         }
+        
+        # Add TTS audio if generated successfully
+        if tts_audio:
+            response_data['tts_audio'] = tts_audio
         
         if has_getlinks:
             try:

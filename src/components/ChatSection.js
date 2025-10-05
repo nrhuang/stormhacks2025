@@ -22,8 +22,52 @@ const ChatSection = () => {
   const [showClearModal, setShowClearModal] = useState(false);
   const messagesEndRef = useRef(null);
 
+  // TTS audio playback ref
+  const audioRef = useRef(null);
+
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  // Function to play TTS audio
+  const playTTSAudio = useCallback((base64Audio) => {
+    try {
+      if (!base64Audio) return;
+      
+      // Stop any currently playing audio
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      
+      // Create audio blob from base64
+      const audioData = atob(base64Audio);
+      const arrayBuffer = new ArrayBuffer(audioData.length);
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      for (let i = 0; i < audioData.length; i++) {
+        uint8Array[i] = audioData.charCodeAt(i);
+      }
+      
+      const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      // Create and play audio
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+      
+      audio.play().catch(error => {
+        console.warn('Could not play TTS audio:', error);
+      });
+      
+      // Clean up URL after playing
+      audio.addEventListener('ended', () => {
+        URL.revokeObjectURL(audioUrl);
+      });
+      
+    } catch (error) {
+      console.warn('Error playing TTS audio:', error);
+    }
   }, []);
 
   // perform the clear (called from modal "Clear Chat" button)
@@ -37,7 +81,17 @@ const ChatSection = () => {
     // immediately clear UI
     setMessages([welcome]);
 
-    // stop any ongoing speech
+    // stop any ongoing TTS audio
+    try { 
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    } catch (e) { 
+      console.warn('Could not stop TTS audio', e); 
+    }
+
+    // stop any ongoing speech synthesis (legacy)
     try { window.speechSynthesis?.cancel?.(); } catch (e) { console.warn('Could not cancel speechSynthesis', e); }
 
     try { scrollToBottom(); } catch (e) {}
@@ -158,6 +212,13 @@ const ChatSection = () => {
           timestamp: result.timestamp || Date.now(),
           product_links: result.product_links,
         }]);
+        
+        // Play TTS audio if available
+        console.log("byeeeeeeeeeeeee")
+        if (result.tts_audio) {
+          console.log("hellooooooooooo")
+          playTTSAudio(result.tts_audio);
+        }
       } else {
         throw new Error(result.error || 'Chat failed');
       }
@@ -234,6 +295,11 @@ const ChatSection = () => {
               { type: 'user', message: data.transcript, timestamp: Date.now() },
               { type: 'system', message: data.response, timestamp: data.timestamp }
             ]);
+            
+            // Play TTS audio if available
+            if (data.tts_audio) {
+              playTTSAudio(data.tts_audio);
+            }
           } else {
             throw new Error((data && data.error) || 'Voice transcription failed.');
           }
