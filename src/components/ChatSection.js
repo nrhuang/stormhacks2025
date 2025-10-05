@@ -120,12 +120,12 @@ const ChatSection = () => {
     };
   }, []);
 
-  useEffect(() => {
-    const last = messages[messages.length - 1];
-    if (isSending && last && last.type === 'system') {
-      setIsSending(false);
-    }
-  }, [messages, isSending]);
+  // useEffect(() => {
+  //   const last = messages[messages.length - 1];
+  //   if (isSending && last && last.type === 'system') {
+  //     setIsSending(false);
+  //   }
+  // }, [messages, isSending]);
 
   // loadChatHistory moved above effect to avoid hook warnings
   const loadChatHistory = useCallback(async () => {
