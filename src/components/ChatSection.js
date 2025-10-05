@@ -82,16 +82,13 @@ const ChatSection = () => {
 
   useEffect(() => {
     const handleImageAnalyzed = (event) => {
-      // Add a confirmation message into the chatbox (no popup)
-      const { identification, queries, timestamp } = event.detail || {};
-      const entry = {
-        type: 'confirmation',
-        identification: identification || '',
-        queries: queries || [],
-        timestamp: timestamp || Date.now()
-      };
-      setMessages(prev => [...prev, entry]);
-      // keep camera status handling elsewhere
+      const { message, timestamp } = event.detail;
+      setMessages(prev => [...prev, {
+        type: 'system',
+        message,
+        timestamp,
+        imageProcessed: true
+      }]);
     };
 
     const handleCameraStatus = (event) => {
@@ -115,15 +112,10 @@ const ChatSection = () => {
 
       if (Array.isArray(history) && history.length > 0) {
         setMessages(history.map(entry => ({
-          type: entry.type || 'system',
-          message: entry.message || '',
-          timestamp: entry.timestamp || Date.now(),
-          imageProcessed: entry.image_processed || false,
-          amazon_search_url: entry.amazon_search_url,
-          origin_query: entry.origin_query,
-          // keep identification/queries if present
-          identification: entry.identification,
-          queries: entry.queries
+          type: entry.type,
+          message: entry.message,
+          timestamp: entry.timestamp,
+          imageProcessed: entry.image_processed
         })));
       }
     } catch (error) {
@@ -179,110 +171,14 @@ const ChatSection = () => {
     }
   };
 
-  const confirmAndSearch = async (msgIndex, searchType = 'repair') => {
-    const msg = messages[msgIndex];
-    if (!msg || msg.type !== 'confirmation') return;
-    const queries = msg.queries || [];
-    if (queries.length === 0) return;
-
-    setMessages(prev => prev.map((m, i) => i === msgIndex ? { ...m, pending: true } : m));
-
-    try {
-      const resp = await fetch('/confirm_and_search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ queries, queryIndex: 0, searchType }),
-      });
-      const result = await resp.json();
-      if (result.success) {
-        // replace confirmation message with the identification (as system) and append search results
-        setMessages(prev => prev.map((m, i) => i === msgIndex ? ({
-          type: 'system',
-          message: m.identification || '',
-          timestamp: Date.now(),
-        }) : m));
-
-        if (searchType === 'buy' && result.amazon_search_url) {
-          try {
-            window.open(result.amazon_search_url, '_blank', 'noopener');
-          } catch (e) {
-            console.warn('Could not open Amazon URL in new tab', e);
-          }
-        }
-
-        setMessages(prev => [...prev, {
-          type: 'system',
-          message: result.response || '',
-          timestamp: result.timestamp || Date.now(),
-          amazon_search_url: result.amazon_search_url,
-          origin_query: result.origin_query
-        }]);
-      } else {
-        throw new Error(result.error || 'Search failed');
-      }
-    } catch (error) {
-      console.error('Error confirming and searching:', error);
-      setMessages(prev => [...prev, {
-        type: 'system',
-        message: 'Error performing search: ' + (error.message || ''),
-        timestamp: Date.now()
-      }]);
-    }
-  };
-
-  const getRepairTip = async (originQuery) => {
-    if (!originQuery) return;
-    try {
-      const resp = await fetch('/confirm_and_search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ queries: [originQuery], queryIndex: 0, searchType: 'repair' }),
-      });
-      const result = await resp.json();
-      if (result.success) {
-        setMessages(prev => [...prev, {
-          type: 'system',
-          message: result.response || '',
-          timestamp: result.timestamp || Date.now(),
-          amazon_search_url: result.amazon_search_url,
-          origin_query: result.origin_query
-        }]);
-      } else {
-        throw new Error(result.error || 'Failed to get repair tip');
-      }
-    } catch (e) {
-      console.error('Error fetching repair tip:', e);
-      setMessages(prev => [...prev, { type: 'system', message: 'Error fetching repair tip.', timestamp: Date.now() }]);
-    }
-  };
-
-  const openAmazon = (url) => {
-    if (!url) return;
-    try {
-      window.open(url, '_blank', 'noopener');
-    } catch (e) {
-      console.warn('Could not open Amazon URL', e);
-    }
-  };
-
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
       sendMessage();
     }
   };
 
-  const formatMessage = (text = '') => {
-    return (
-      <ReactMarkdown
-        components={{
-          a: ({ node, ...props }) => (
-            <a {...props} target="_blank" rel="noopener noreferrer" />
-          ),
-        }}
-      >
-        {text}
-      </ReactMarkdown>
-    );
+  const formatMessage = (text) => {
+    return <ReactMarkdown>{text}</ReactMarkdown>;
   };
 
   // =========================
@@ -383,63 +279,12 @@ const ChatSection = () => {
 
       <div className="chat-messages">
         {messages.map((msg, index) => (
-          msg.type === 'confirmation' ? (
-            <div key={index} className={`message confirmation ${msg.pending ? 'pending' : ''}`}>
-              <div style={{ marginBottom: 8 }}>
-                <strong>Please confirm the item:</strong>
-              </div>
-              <div style={{ marginBottom: 8 }}>{formatMessage(msg.identification)}</div>
-              <div style={{ marginBottom: 8 }}>
-                Suggested searches:
-                <ul>
-                  {(msg.queries || []).map((q, i) => <li key={i}>{q}</li>)}
-                </ul>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => confirmAndSearch(index, 'repair')}
-                  className="btn btn-secondary"
-                  disabled={msg.pending}
-                >
-                  Find repair solutions
-                </button>
-                <button
-                  onClick={() => confirmAndSearch(index, 'buy')}
-                  className="btn btn-primary"
-                  disabled={msg.pending}
-                >
-                  Search Amazon for replacements
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div
-              key={index}
-              className={`message ${msg.type} ${msg.imageProcessed ? 'image-processed' : ''}`}
-            >
-              {formatMessage(msg.message)}
-              {(msg.amazon_search_url || msg.origin_query) && (
-                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                  {msg.amazon_search_url && (
-                    <button
-                      onClick={() => openAmazon(msg.amazon_search_url)}
-                      className="btn btn-primary"
-                    >
-                      Check Amazon
-                    </button>
-                  )}
-                  {msg.origin_query && (
-                    <button
-                      onClick={() => getRepairTip(msg.origin_query)}
-                      className="btn btn-secondary"
-                    >
-                      Get repair tip
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )
+          <div
+            key={index}
+            className={`message ${msg.type} ${msg.imageProcessed ? 'image-processed' : ''}`}
+          >
+            {formatMessage(msg.message)}
+          </div>
         ))}
         {isSending && (
           <div className="message system typing" aria-live="polite">

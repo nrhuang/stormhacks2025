@@ -97,13 +97,9 @@ const VideoSection = () => {
       const result = await response.json();
 
       if (result.success) {
-        // Emit event to chat section to add the message and suggested queries
+        // Emit event to chat section to add the message
         window.dispatchEvent(new CustomEvent('imageAnalyzed', {
-          detail: {
-            identification: result.identification || result.response,
-            queries: result.queries || [],
-            timestamp: result.timestamp
-          }
+          detail: { message: result.response, timestamp: result.timestamp }
         }));
         showStatus('Analysis complete!', 'success');
       } else {
